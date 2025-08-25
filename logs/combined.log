@@ -1,0 +1,7 @@
+{"level":"info","message":"Incoming request: PUT /api/v1/appointments/set-off-day/all-services/items/update/option/:id/","service":"default-service-name","timestamp":"2025-08-25 07:57:03"}
+{"level":"info","message":"Incoming request: POST /api/v1/appointments/set-off-day/all-services/items/update/option/:id/","service":"default-service-name","timestamp":"2025-08-25 07:57:08"}
+{"level":"info","message":"Incoming request: POST /api/v1/appointments/set-off-day/all-services/items/update/option/:id/","service":"default-service-name","timestamp":"2025-08-25 07:57:18"}
+{"level":"info","message":"Incoming request: GET /favicon.ico","service":"default-service-name","timestamp":"2025-08-25 07:57:38"}
+{"level":"info","message":"Incoming request: POST /api/v1/appointments/set-off-day","service":"default-service-name","timestamp":"2025-08-25 08:00:27"}
+{"level":"info","message":"Incoming request: POST /api/v1/appointments/set-off-day","service":"default-service-name","timestamp":"2025-08-25 08:00:42"}
+{"level":"info","message":"Incoming request: POST /api/v1/appointments/set-off-day","service":"default-service-name","timestamp":"2025-08-25 08:00:44"}
