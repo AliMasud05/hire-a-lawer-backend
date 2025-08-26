@@ -1,404 +1,271 @@
-// appointment.service.ts
-import { AppointmentStatus, TimeSlotStatus } from "@prisma/client";
 import httpStatus from "http-status";
-import ApiError from "../../../errors/ApiErrors";
-import { IPaginationOptions } from "../../../interfaces/paginations";
 import prisma from "../../../shared/prisma";
-import { paginationHelpers } from "../../../utils/paginationHelper";
-import {
-  TAppointment,
-  TCalendar,
-  TCreateTimeSlots,
-  TTimeSlot,
-} from "./appointment.interface";
+import ApiError from "../../../errors/ApiErrors";
+import { TimeSlot } from "@prisma/client";
 
-// Calendar Management (Admin)
-const setOffDay = async (payload: TCalendar) => {
-  const existingCalendar = await prisma.calendar.findUnique({
-    where: { date: payload.date },
+const getAvailableDates = async () => {
+  const holidays = await prisma.holiday.findMany({
+    select: { date: true },
   });
+  const holidayDates = holidays.map((h) => h.date.toISOString().split("T")[0]);
 
-  if (existingCalendar) {
-    return await prisma.calendar.update({
-      where: { date: payload.date },
-      data: {
-        isOffDay: payload.isOffDay,
-        description: payload.description,
-      },
-    });
+  const today = new Date();
+  const dates = [];
+  for (let i = 0; i < 30; i++) {
+    const date = new Date(today);
+    date.setDate(today.getDate() + i);
+    const dateString = date.toISOString().split("T")[0];
+    if (!holidayDates.includes(dateString)) {
+      dates.push(dateString);
+    }
   }
-
-  return await prisma.calendar.create({
-    data: {
-      date: payload.date,
-      isOffDay: payload.isOffDay || false,
-      description: payload.description,
-    },
-  });
+  return dates;
 };
 
-const createTimeSlots = async (payload: TCreateTimeSlots) => {
-  const { date, startTime, endTime, slotDuration, breakTime = 0 } = payload;
+const getAvailableTimeSlots = async (date: string) => {
+  const selectedDate = new Date(date);
+  if (isNaN(selectedDate.getTime())) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid date format");
+  }
 
-  // Check if date is off day
-  const calendar = await prisma.calendar.findUnique({
-    where: { date },
+  const holiday = await prisma.holiday.findUnique({
+    where: { date: selectedDate },
+  });
+  if (holiday) {
+    return [];
+  }
+
+  const timeSlots = await prisma.timeSlot.findMany({
+    where: {
+      date: selectedDate,
+      isBooked: false,
+    },
+    select: {
+      id: true,
+      startTime: true,
+      endTime: true,
+    },
   });
 
-  if (calendar?.isOffDay) {
+  return timeSlots;
+};
+
+const createBooking = async (data: {
+  date: string;
+  timeSlotId: string;
+  firstName: string;
+  lastName: string;
+  phoneNumber: string;
+  email: string;
+  typeOfCase: string;
+  caseDescription: string;
+}) => {
+  const {
+    date,
+    timeSlotId,
+    firstName,
+    lastName,
+    phoneNumber,
+    email,
+    typeOfCase,
+    caseDescription,
+  } = data;
+
+  const selectedDate = new Date(date);
+  if (isNaN(selectedDate.getTime())) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid date format");
+  }
+
+  const timeSlot = await prisma.timeSlot.findUnique({
+    where: { id: timeSlotId },
+  });
+  if (!timeSlot) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Time slot not found");
+  }
+  if (timeSlot.isBooked) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Time slot already booked");
+  }
+
+  const holiday = await prisma.holiday.findUnique({
+    where: { date: selectedDate },
+  });
+  if (holiday) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Selected date is a holiday");
+  }
+
+  const booking = await prisma.$transaction(async (tx) => {
+    const newBooking = await tx.booking.create({
+      data: {
+        date: selectedDate,
+        timeSlotId,
+        firstName,
+        lastName,
+        phoneNumber,
+        email,
+        typeOfCase,
+        caseDescription,
+        paymentStatus: "PENDING",
+      },
+    });
+
+    await tx.timeSlot.update({
+      where: { id: timeSlotId },
+      data: { isBooked: true },
+    });
+
+    return newBooking;
+  });
+
+  return booking;
+};
+
+const createHoliday = async (data: { date: string; description?: string }) => {
+  const { date, description } = data;
+  const holidayDate = new Date(date);
+  if (isNaN(holidayDate.getTime())) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid date format");
+  }
+
+  const existingHoliday = await prisma.holiday.findUnique({
+    where: { date: holidayDate },
+  });
+  if (existingHoliday) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot create slots for off day"
+      "Holiday already exists for this date"
     );
   }
 
-  // Create or get calendar entry
-  const calendarEntry = await prisma.calendar.upsert({
-    where: { date },
-    create: { date, isOffDay: false },
-    update: {},
-  });
-
-  // Parse time slots
-  const [startHour, startMinute] = startTime.split(":").map(Number);
-  const [endHour, endMinute] = endTime.split(":").map(Number);
-
-  const startDateTime = new Date(date);
-  startDateTime.setHours(startHour, startMinute, 0, 0);
-
-  const endDateTime = new Date(date);
-  endDateTime.setHours(endHour, endMinute, 0, 0);
-
-  const slots = [];
-  let currentTime = new Date(startDateTime);
-
-  while (currentTime < endDateTime) {
-    const slotEnd = new Date(currentTime);
-    slotEnd.setMinutes(slotEnd.getMinutes() + slotDuration);
-
-    if (slotEnd <= endDateTime) {
-      slots.push({
-        calendarId: calendarEntry.id,
-        startTime: new Date(currentTime),
-        endTime: new Date(slotEnd),
-        status: TimeSlotStatus.AVAILABLE,
-      });
-    }
-
-    currentTime.setMinutes(currentTime.getMinutes() + slotDuration + breakTime);
-  }
-
-  // Delete existing slots for the date and create new ones
-  await prisma.timeSlot.deleteMany({
-    where: { calendarId: calendarEntry.id },
-  });
-
-  await prisma.timeSlot.createMany({
-    data: slots,
-  });
-
-  return {
-    message: `${slots.length} time slots created for ${date.toDateString()}`,
-    slots: slots.length,
-  };
-};
-
-// Get available time slots for a specific date (User)
-const getAvailableSlots = async (date: Date) => {
-  const calendar = await prisma.calendar.findUnique({
-    where: { date },
-    include: {
-      timeSlots: {
-        where: {
-          status: TimeSlotStatus.AVAILABLE,
-        },
-        orderBy: {
-          startTime: "asc",
-        },
-      },
+  return await prisma.holiday.create({
+    data: {
+      date: holidayDate,
+      description,
     },
   });
-
-  if (!calendar || calendar.isOffDay) {
-    return {
-      date,
-      isOffDay: true,
-      availableSlots: [],
-    };
-  }
-
-  return {
-    date,
-    isOffDay: false,
-    availableSlots: calendar.timeSlots.map((slot) => ({
-      id: slot.id,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      status: slot.status,
-    })),
-  };
 };
 
-// Create appointment (User)
-const createAppointment = async (payload: TAppointment) => {
-  // Check if time slot is available
-  const timeSlot = await prisma.timeSlot.findUnique({
-    where: { id: payload.timeSlotId },
-    include: { calendar: true },
+const deleteHoliday = async (id: string) => {
+  const holiday = await prisma.holiday.findUnique({
+    where: { id },
   });
+  if (!holiday) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Holiday not found");
+  }
 
+  await prisma.holiday.delete({
+    where: { id },
+  });
+};
+
+const getHolidays = async () => {
+  return await prisma.holiday.findMany({
+    select: {
+      id: true,
+      date: true,
+      description: true,
+      createdAt: true,
+    },
+  });
+};
+
+const createTimeSlots = async (date: string) => {
+  const selectedDate = new Date(date);
+  if (isNaN(selectedDate.getTime())) {
+    throw new ApiError(httpStatus.BAD_REQUEST, "Invalid date format");
+  }
+
+  const holiday = await prisma.holiday.findUnique({
+    where: { date: selectedDate },
+  });
+  if (holiday) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Cannot create time slots for a holiday"
+    );
+  }
+
+  const existingSlots = await prisma.timeSlot.findMany({
+    where: { date: selectedDate },
+  });
+  if (existingSlots.length > 0) {
+    throw new ApiError(
+      httpStatus.BAD_REQUEST,
+      "Time slots already exist for this date"
+    );
+  }
+
+  const timeSlots: TimeSlot[] = [];
+  const startHour = 9; // 9 AM
+  const slotDuration = 60; // 1 hour slots
+  for (let i = 0; i < 6; i++) {
+    const startTime = `${startHour + i}:00`;
+    const endTime = `${startHour + i + 1}:00`;
+    const slot = await prisma.timeSlot.create({
+      data: {
+        date: selectedDate,
+        startTime,
+        endTime,
+        isBooked: false,
+      },
+    });
+    timeSlots.push(slot);
+  }
+
+  return timeSlots;
+};
+
+const updateTimeSlot = async (id: string, data: Partial<TimeSlot>) => {
+  const timeSlot = await prisma.timeSlot.findUnique({
+    where: { id },
+  });
   if (!timeSlot) {
     throw new ApiError(httpStatus.NOT_FOUND, "Time slot not found");
   }
 
-  if (timeSlot.status !== TimeSlotStatus.AVAILABLE) {
-    throw new ApiError(httpStatus.BAD_REQUEST, "Time slot is not available");
-  }
-
-  if (timeSlot.calendar.isOffDay) {
+  if (timeSlot.isBooked) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot book appointment on off day"
+      "Cannot update a booked time slot"
     );
   }
 
-  // Create appointment and update time slot status in transaction
-  const result = await prisma.$transaction(async (tx) => {
-    // Update time slot status
-    await tx.timeSlot.update({
-      where: { id: payload.timeSlotId },
-      data: { status: TimeSlotStatus.BOOKED },
-    });
-
-    // Create appointment
-    const appointment = await tx.appointment.create({
-      data: {
-        userId: payload.userId,
-        timeSlotId: payload.timeSlotId,
-        firstName: payload.firstName,
-        lastName: payload.lastName,
-        email: payload.email,
-        phoneNumber: payload.phoneNumber,
-        dateOfBirth: payload.dateOfBirth,
-        address: payload.address,
-        appointmentDate: payload.appointmentDate,
-        notes: payload.notes,
-        status: AppointmentStatus.PENDING,
-        consultationFee: payload.consultationFee,
-        isPaid: payload.isPaid || false,
-      },
-      include: {
-        timeSlot: true,
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    return appointment;
-  });
-
-  return result;
-};
-
-// Get user appointments
-const getUserAppointments = async (
-  userId: string,
-  options: IPaginationOptions
-) => {
-  const { limit, page, skip, sortBy, sortOrder } =
-    paginationHelpers.calculatePagination(options);
-
-  const appointments = await prisma.appointment.findMany({
-    where: { userId },
-    include: {
-      timeSlot: {
-        include: {
-          calendar: true,
-        },
-      },
-    },
-    skip,
-    take: limit,
-    orderBy:
-      sortBy && sortOrder
-        ? { [sortBy]: sortOrder }
-        : { appointmentDate: "desc" },
-  });
-
-  const total = await prisma.appointment.count({
-    where: { userId },
-  });
-
-  return {
-    meta: { page, limit, total },
-    data: appointments,
-  };
-};
-
-// Get all appointments (Admin)
-const getAllAppointments = async (
-  filters: {
-    searchTerm?: string;
-    status?: AppointmentStatus;
-    startDate?: Date;
-    endDate?: Date;
-  },
-  options: IPaginationOptions
-) => {
-  const { limit, page, skip, sortBy, sortOrder } =
-    paginationHelpers.calculatePagination(options);
-  const { searchTerm, status, startDate, endDate } = filters;
-
-  const andConditions: any[] = [];
-
-  if (searchTerm) {
-    andConditions.push({
-      OR: [
-        { firstName: { contains: searchTerm, mode: "insensitive" } },
-        { lastName: { contains: searchTerm, mode: "insensitive" } },
-        { email: { contains: searchTerm, mode: "insensitive" } },
-        { phoneNumber: { contains: searchTerm, mode: "insensitive" } },
-      ],
-    });
-  }
-
-  if (status) {
-    andConditions.push({ status });
-  }
-
-  if (startDate || endDate) {
-    const dateFilter: any = {};
-    if (startDate) dateFilter.gte = startDate;
-    if (endDate) dateFilter.lte = endDate;
-    andConditions.push({ appointmentDate: dateFilter });
-  }
-
-  const whereConditions =
-    andConditions.length > 0 ? { AND: andConditions } : {};
-
-  const appointments = await prisma.appointment.findMany({
-    where: whereConditions,
-    include: {
-      timeSlot: {
-        include: {
-          calendar: true,
-        },
-      },
-      user: {
-        select: {
-          id: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-        },
-      },
-    },
-    skip,
-    take: limit,
-    orderBy:
-      sortBy && sortOrder
-        ? { [sortBy]: sortOrder }
-        : { appointmentDate: "desc" },
-  });
-
-  const total = await prisma.appointment.count({
-    where: whereConditions,
-  });
-
-  return {
-    meta: { page, limit, total },
-    data: appointments,
-  };
-};
-
-// Update appointment status (Admin)
-const updateAppointmentStatus = async (
-  appointmentId: string,
-  status: AppointmentStatus
-) => {
-  const appointment = await prisma.appointment.findUnique({
-    where: { id: appointmentId },
-    include: { timeSlot: true },
-  });
-
-  if (!appointment) {
-    throw new ApiError(httpStatus.NOT_FOUND, "Appointment not found");
-  }
-
-  const result = await prisma.$transaction(async (tx) => {
-    // Update appointment status
-    const updatedAppointment = await tx.appointment.update({
-      where: { id: appointmentId },
-      data: { status },
-      include: {
-        timeSlot: true,
-        user: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
-
-    // If appointment is cancelled, make time slot available again
-    if (status === AppointmentStatus.CANCELLED) {
-      await tx.timeSlot.update({
-        where: { id: appointment.timeSlotId },
-        data: { status: TimeSlotStatus.AVAILABLE },
-      });
-    }
-
-    return updatedAppointment;
-  });
-
-  return result;
-};
-
-// Cancel appointment (User)
-const cancelAppointment = async (appointmentId: string, userId: string) => {
-  const appointment = await prisma.appointment.findFirst({
-    where: {
-      id: appointmentId,
-      userId,
+  return await prisma.timeSlot.update({
+    where: { id },
+    data: {
+      startTime: data.startTime,
+      endTime: data.endTime,
     },
   });
+};
 
-  if (!appointment) {
-    throw new ApiError(
-      httpStatus.NOT_FOUND,
-      "Appointment not found or you don't have permission"
-    );
+const deleteTimeSlot = async (id: string) => {
+  const timeSlot = await prisma.timeSlot.findUnique({
+    where: { id },
+  });
+  if (!timeSlot) {
+    throw new ApiError(httpStatus.NOT_FOUND, "Time slot not found");
   }
 
-  if (appointment.status === AppointmentStatus.COMPLETED) {
+  if (timeSlot.isBooked) {
     throw new ApiError(
       httpStatus.BAD_REQUEST,
-      "Cannot cancel completed appointment"
+      "Cannot delete a booked time slot"
     );
   }
 
-  return await updateAppointmentStatus(
-    appointmentId,
-    AppointmentStatus.CANCELLED
-  );
+  await prisma.timeSlot.delete({
+    where: { id },
+  });
 };
 
 export const AppointmentService = {
-  setOffDay,
+  getAvailableDates,
+  getAvailableTimeSlots,
+  createBooking,
+  createHoliday,
+  deleteHoliday,
+  getHolidays,
   createTimeSlots,
-  getAvailableSlots,
-  createAppointment,
-  getUserAppointments,
-  getAllAppointments,
-  updateAppointmentStatus,
-  cancelAppointment,
+  updateTimeSlot,
+  deleteTimeSlot,
 };

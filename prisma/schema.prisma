@@ -8,129 +8,231 @@ generator client {
   provider = "prisma-client-js"
 }
 
-enum UserRole {
-  USER
-  ADMIN
+// enum UserRole {
+//   USER
+//   ADMIN
+// }
+
+// enum UserStatus {
+//   ACTIVE
+//   SUSPENDED
+//   DELETED
+// }
+
+// model User {
+//   id String @id @default(cuid())
+
+//   firstName             String
+//   lastName              String?
+//   email                 String  @unique
+//   image                 String?
+//   password              String?
+//   privacyPolicyAccepted Boolean @default(false)
+
+//   phoneNumber String?
+//   dateOfBirth DateTime?
+//   address     String?
+//   status      UserStatus @default(ACTIVE)
+
+//   role UserRole @default(USER)
+
+//   otp          String?
+//   otpExpiresAt DateTime?
+//   isVerified   Boolean   @default(false)
+
+//   stripeCustomerId String?
+//   provider String?
+
+//   accessToken  String?
+//   refreshToken String?
+
+//   createdAt        DateTime         @default(now())
+//   updatedAt        DateTime         @updatedAt
+
+//   @@map("users")
+// }
+
+
+// // Add these models to your existing schema.prisma file
+
+// enum AppointmentStatus {
+//   PENDING
+//   CONFIRMED
+//   CANCELLED
+//   COMPLETED
+// }
+
+// enum TimeSlotStatus {
+//   AVAILABLE
+//   BOOKED
+//   BLOCKED
+// }
+
+// // Calendar management for admin to set off days
+// model Calendar {
+//   id          String   @id @default(cuid())
+//   date        DateTime
+//   isOffDay    Boolean  @default(false)
+//   description String?  // Optional description for off day reason
+//   createdAt   DateTime @default(now())
+//   updatedAt   DateTime @updatedAt
+  
+//   // Relation to time slots
+//   timeSlots   TimeSlot[]
+  
+//   @@unique([date])
+//   @@map("calendars")
+// }
+
+// // Time slots for each date
+// model TimeSlot {
+//   id          String        @id @default(cuid())
+//   calendarId  String
+//   startTime   DateTime
+//   endTime     DateTime
+//   status      TimeSlotStatus @default(AVAILABLE)
+//   createdAt   DateTime      @default(now())
+//   updatedAt   DateTime      @updatedAt
+  
+//   // Relations
+//   calendar     Calendar      @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+//   appointment  Appointment?
+  
+//   @@unique([calendarId, startTime])
+//   @@map("time_slots")
+// }
+
+// // Appointment booking
+// model Appointment {
+//   id              String           @id @default(cuid())
+//   userId          String
+//   timeSlotId      String           @unique
+  
+//   // Client information
+//   firstName       String
+//   lastName        String
+//   email           String
+//   phoneNumber     String
+//   dateOfBirth     DateTime?
+//   address         String?
+  
+//   // Appointment details
+//   appointmentDate DateTime
+//   notes           String?          // Additional notes from client
+//   status          AppointmentStatus @default(PENDING)
+  
+//   // Payment related (optional)
+//   consultationFee Decimal?         @db.Decimal(10, 2)
+//   isPaid          Boolean          @default(false)
+  
+//   createdAt       DateTime         @default(now())
+//   updatedAt       DateTime         @updatedAt
+  
+//   // Relations
+//   timeSlot        TimeSlot         @relation(fields: [timeSlotId], references: [id])
+  
+//   @@map("appointments")
+// }
+
+
+
+
+
+// 
+
+
+// model User { id String @id @default(uuid())
+//  firstName String
+//   lastName String? 
+//   email String @unique
+//    password String? role
+//     UserRole @default(USER)
+//      isVerified Boolean
+//       @default(false)
+//        otp String?
+//         otpExpiresAt DateTime? accessToken String? refreshToken String? phoneNumber String? dateOfBirth DateTime? address String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt status UserStatus @default(ACTIVE) bookings Booking[] }
+
+// model Holiday { id String @id @default(uuid()) date DateTime @unique description String? createdAt DateTime @default(now()) updatedAt DateTime @updatedAt }
+
+// model TimeSlot { id String @id @default(uuid()) date DateTime startTime String endTime String isBooked Boolean @default(false) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt bookings Booking[] @@unique([date, startTime]) }
+
+// model Booking { id String @id @default(uuid()) userId String? timeSlotId String date DateTime personalInfo Json caseDescription String paymentStatus PaymentStatus @default(PENDING) createdAt DateTime @default(now()) updatedAt DateTime @updatedAt user User? @relation(fields: [userId], references: [id]) timeSlot TimeSlot @relation(fields: [timeSlotId], references: [id]) }
+
+// enum UserRole { ADMIN USER }
+
+// enum UserStatus { ACTIVE DELETED }
+
+// enum PaymentStatus { PENDING COMPLETED FAILED }
+
+model User{
+  id String @id @default(uuid())
+  firstName String
+  lastName String? 
+  email String @unique
+  password String? 
+  role UserRole @default(USER)
+  isVerified Boolean @default(false)
+  otp String?
+  otpExpiresAt DateTime? 
+  accessToken String? 
+  refreshToken String? 
+  phoneNumber String? 
+  dateOfBirth DateTime? 
+  address String? 
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  status UserStatus @default(ACTIVE)
 }
 
-enum UserStatus {
+model Holiday{
+  id String @id @default(uuid())
+  date DateTime @unique
+  description String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+}
+
+model TimeSlot{
+  id String @id @default(uuid())
+  date DateTime
+  startTime String
+  endTime String
+  isBooked Boolean @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  bookings Booking[]
+  @@unique([date, startTime])
+}
+
+model Booking{
+  id String @id @default(uuid())
+  timeSlotId String
+  date DateTime
+ firstName String
+ lastName String
+ phoneNumber String
+  email String
+  typeOfCase String
+  caseDescription String
+  paymentStatus PaymentStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  timeSlot TimeSlot @relation(fields: [timeSlotId], references: [id])
+}
+
+enum UserRole{
+  ADMIN
+  USER
+}
+
+enum UserStatus{
   ACTIVE
-  SUSPENDED
   DELETED
 }
 
-model User {
-  id String @id @default(cuid())
-
-  firstName             String
-  lastName              String?
-  email                 String  @unique
-  image                 String?
-  password              String?
-  privacyPolicyAccepted Boolean @default(false)
-
-  phoneNumber String?
-  dateOfBirth DateTime?
-  address     String?
-  status      UserStatus @default(ACTIVE)
-
-  role UserRole @default(USER)
-
-  otp          String?
-  otpExpiresAt DateTime?
-  isVerified   Boolean   @default(false)
-
-  stripeCustomerId String?
-  provider String?
-
-  accessToken  String?
-  refreshToken String?
-
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-
-  @@map("users")
-}
-
-
-// Add these models to your existing schema.prisma file
-
-enum AppointmentStatus {
+enum PaymentStatus{
   PENDING
-  CONFIRMED
-  CANCELLED
   COMPLETED
+  FAILED
 }
-
-enum TimeSlotStatus {
-  AVAILABLE
-  BOOKED
-  BLOCKED
-}
-
-// Calendar management for admin to set off days
-model Calendar {
-  id          String   @id @default(cuid())
-  date        DateTime
-  isOffDay    Boolean  @default(false)
-  description String?  // Optional description for off day reason
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  
-  // Relation to time slots
-  timeSlots   TimeSlot[]
-  
-  @@unique([date])
-  @@map("calendars")
-}
-
-// Time slots for each date
-model TimeSlot {
-  id          String        @id @default(cuid())
-  calendarId  String
-  startTime   DateTime
-  endTime     DateTime
-  status      TimeSlotStatus @default(AVAILABLE)
-  createdAt   DateTime      @default(now())
-  updatedAt   DateTime      @updatedAt
-  
-  // Relations
-  calendar     Calendar      @relation(fields: [calendarId], references: [id], onDelete: Cascade)
-  appointment  Appointment?
-  
-  @@unique([calendarId, startTime])
-  @@map("time_slots")
-}
-
-// Appointment booking
-model Appointment {
-  id              String           @id @default(cuid())
-  userId          String
-  timeSlotId      String           @unique
-  
-  // Client information
-  firstName       String
-  lastName        String
-  email           String
-  phoneNumber     String
-  dateOfBirth     DateTime?
-  address         String?
-  
-  // Appointment details
-  appointmentDate DateTime
-  notes           String?          // Additional notes from client
-  status          AppointmentStatus @default(PENDING)
-  
-  // Payment related (optional)
-  consultationFee Decimal?         @db.Decimal(10, 2)
-  isPaid          Boolean          @default(false)
-  
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
-  
-  // Relations
-  timeSlot        TimeSlot         @relation(fields: [timeSlotId], references: [id])
-  
-  @@map("appointments")
-}
-

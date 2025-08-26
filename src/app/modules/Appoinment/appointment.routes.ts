@@ -1,56 +1,48 @@
-// appointment.routes.ts
-import { UserRole } from "@prisma/client";
 import express from "express";
-import auth from "../../middlewares/auth";
 import { AppointmentController } from "./appointment.controller";
+import auth from "../../middlewares/auth";
+import { UserRole } from "@prisma/client";
 
 const router = express.Router();
 
 // Public routes
-router.get("/available-slots/:date", AppointmentController.getAvailableSlots);
-
-// User authenticated routes
-router.post(
-  "/create",
-  // auth(UserRole.USER),
-  AppointmentController.createAppointment
-);
-
+router.get("/available-dates", AppointmentController.getAvailableDates);
 router.get(
-  "/my-appointments",
-  // auth(UserRole.USER),
-  AppointmentController.getMyAppointments
+  "/available-time-slots/:date",
+  AppointmentController.getAvailableTimeSlots
 );
+router.post("/book", AppointmentController.createBooking);
 
-router.patch(
-  "/cancel/:appointmentId",
-  // auth(UserRole.USER),
-  AppointmentController.cancelAppointment
-);
-
-// Admin only routes
+// Admin routes
 router.post(
-  "/set-off-day",
+  "/holiday",
   // auth(UserRole.ADMIN),
-  AppointmentController.setOffDay
+  AppointmentController.createHoliday
 );
-
+router.delete(
+  "/holiday/:id",
+  // auth(UserRole.ADMIN),
+  AppointmentController.deleteHoliday
+);
+router.get(
+  "/holidays",
+  // auth(UserRole.ADMIN),
+  AppointmentController.getHolidays
+);
 router.post(
-  "/create-time-slots",
+  "/time-slots",
   // auth(UserRole.ADMIN),
   AppointmentController.createTimeSlots
 );
-
-router.get(
-  "/all",
-  // auth(UserRole.ADMIN),
-  AppointmentController.getAllAppointments
-);
-
 router.patch(
-  "/update-status/:appointmentId",
+  "/time-slot/:id",
   // auth(UserRole.ADMIN),
-  AppointmentController.updateAppointmentStatus
+  AppointmentController.updateTimeSlot
+);
+router.delete(
+  "/time-slot/:id",
+  // auth(UserRole.ADMIN),
+  AppointmentController.deleteTimeSlot
 );
 
 export const AppointmentRoutes = router;
